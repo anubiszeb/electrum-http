@@ -4,6 +4,13 @@ const ElectrumCli = require("electrum-client");
 http.createServer(onRequest).listen(3456);
 
 function onRequest(req, res) {
+
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Request-Method', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+
   var x = req.url.split("?param=");
   var param = x[1]
   var y = x[0].split("?call=")
