@@ -1,6 +1,9 @@
 var http = require('http');
 const ElectrumCli = require("electrum-client");
 
+var conType = "tls";  // tcp or tls
+var conPort = 50002;
+
 http.createServer(onRequest).listen(3456);
 
 function onRequest(req, res) {
@@ -65,7 +68,7 @@ function onRequest(req, res) {
 
   function oneparam() {
     var main = async () => {
-      var ecl = new ElectrumCli(50002, server, "tls"); // tcp or tls
+      var ecl = new ElectrumCli(conPort, server, conType);
       await ecl.connect()
         .catch(function (error) {
           console.log(error)
@@ -92,7 +95,7 @@ function onRequest(req, res) {
 
   function zeroparam() {
     var main = async () => {
-      var ecl = new ElectrumCli(50002, server, "tls"); // tcp or tls
+      var ecl = new ElectrumCli(conPort, server, conType);
       await ecl.connect()
         .catch(function (error) {
           console.log(error)

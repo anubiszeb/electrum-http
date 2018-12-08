@@ -1,12 +1,16 @@
 {
   "name": "electrum-http",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Service that takes http requests asks specific electrum server in socket and returns electrums response",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "author": "Zel Technologies GmbH, Zug",
+  "repository": {
+    "url": "git@github.com:TheTrunk/electrum-http.git",
+    "type": "git"
+  },
+  "author": "Tadeas Kmenta",
   "license": "MIT",
   "dependencies": {
     "electrum-client": "0.0.6"
