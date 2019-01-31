@@ -81,9 +81,28 @@ function onRequest(req, res) {
           param
         ); // json-rpc(promise)
         //console.log(ver)
-        var verString = JSON.stringify(ver)
-        res.write(verString)
-        res.end()
+        if (eclCall === "blockchainAddress_listunspent") {
+          const slicedArray = ver.slice(0, 600);
+          const verString = JSON.stringify(slicedArray)
+          res.write(verString)
+          res.end()
+        } else if (eclCall === "blockchainAddress_getHistory") {
+          if (ver.length > 200) {
+            const lenght = ver.length
+            const slicedArray = ver.slice(lenght - 100, lenght);
+            const verString = JSON.stringify(slicedArray)
+            res.write(verString)
+            res.end()
+          } else {
+            var verString = JSON.stringify(ver)
+            res.write(verString)
+            res.end()
+          }
+        } else {
+          var verString = JSON.stringify(ver)
+          res.write(verString)
+          res.end()
+        }
       } catch (e) {
         res.write(JSON.stringify(e))
         res.end()
