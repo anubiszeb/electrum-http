@@ -42,7 +42,11 @@ function onRequest(req, res) {
       break;
     case 'history':
       eclCall = 'blockchainAddress_getHistory'
-      oneparam()
+      oneparam(true)
+      break;
+    case 'entirehistory':
+      eclCall = 'blockchainAddress_getHistory'
+      oneparam(false)
       break;
     case 'transaction':
       eclCall = 'blockchainTransaction_get'
@@ -66,7 +70,7 @@ function onRequest(req, res) {
       break;
   }
 
-  function oneparam() {
+  function oneparam(limitHistory) {
     var main = async () => {
       var ecl = new ElectrumCli(conPort, server, conType);
       await ecl.connect()
@@ -86,7 +90,7 @@ function onRequest(req, res) {
           const verString = JSON.stringify(slicedArray)
           res.write(verString)
           res.end()
-        } else if (eclCall === "blockchainAddress_getHistory") {
+        } else if (eclCall === "blockchainAddress_getHistory" && limitHistory) {
           if (ver.length > 200) {
             const lenght = ver.length
             const slicedArray = ver.slice(lenght - 100, lenght);
