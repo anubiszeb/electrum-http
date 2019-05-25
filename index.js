@@ -1,8 +1,9 @@
 var http = require('http');
 const ElectrumCli = require("electrum-client");
+const qs = require("qs");
 
-var conType = "tls";  // tcp or tls
-var conPort = 50002;
+let conTypeDefault = "tls";  // tcp or tls
+let conPortDefault = 50002;
 
 http.createServer(onRequest).listen(3456);
 
@@ -14,25 +15,43 @@ function onRequest(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET');
   res.setHeader('Access-Control-Allow-Headers', '*');
 
-  var x = req.url.split("?param=");
-  var param = x[1]
-  var y = x[0].split("?call=")
-  var call = y[1]
+  let decMyCP = decodeURIComponent(req.url);
+  decMyCP = decMyCP.split("/?")[1];
+  const parsed = qs.parse(decMyCP);
+
+  let call = parsed.call;
+  let param = parsed.param;
+  let server = parsed.server;
+  const conPort = parsed.port || conPortDefault;
+  const conType = parsed.contype || conTypeDefault;
+
+  // support backwards compatibility
+  if (call == undefined || server == undefined) {
+    var x = req.url.split("?param=");
+    param = x[1]
+    var y = x[0].split("?call=")
+    call = y[1]
+    var z = y[0].split("?server=")
+    server = z[1]
+  }
+
   if (call == undefined) {
     res.write("Error: Call is undefined");
     res.end();
     return;
   }
-  var z = y[0].split("?server=")
-  var server = z[1]
+
   if (server == undefined) {
     res.write("Error: Server is undefined");
     res.end();
     return;
   }
-  console.log(param)
-  console.log(call)
-  console.log(server)
+
+  console.log(param);
+  console.log(call);
+  console.log(server);
+  console.log(conPort);
+  console.log(conType);
 
   var eclCall = "";
   switch (call) {

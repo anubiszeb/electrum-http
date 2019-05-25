@@ -18,9 +18,9 @@ npm start
 Service will be started on 127.0.0.1:3456
 
 ## Example
-http://127.0.0.1:3456/?server=explorer.suqa.zelcore.io?call=balance?param=SXoqyAiZ6gQjafKmSnb2pmfwg7qLC8r4Sf
+http://localhost:3456/?server=proxy.genx.zelcore.io&call=history&param=CL19a3dereSFacjneBLJCK1QRXfG7Tm7Hh&port=50002&contype=tls
 
-parameters - > call, server, param
+parameters - > call, server, param, port, contype
 
 possible calls
 balance = blockchainAddress_getBalance, param = address
