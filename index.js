@@ -35,6 +35,14 @@ function onRequest(req, res) {
     server = z[1]
   }
 
+  // support mobile mistake where it was ?param
+  if (call !== 'height' && call !== undefined && param === undefined) {
+    var x = req.url.split("?param=");
+    param = x[1]
+    var y = x[0].split("&call=")
+    call = y[1]
+  }
+
   if (call == undefined) {
     res.write("Error: Call is undefined");
     res.end();
