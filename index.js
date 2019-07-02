@@ -386,6 +386,10 @@ function onRequest(req, res) {
         for (let i = 0; i < limit; i += 1) {
           terribleFn(i);
         }
+        if (limit === 0) {
+          res.write(JSON.stringify(lightTransactions));
+          res.end();
+        }
       })
       .catch((e) => {
         console.log(e);
