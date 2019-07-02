@@ -1,6 +1,6 @@
 {
   "name": "electrum-http",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Service that takes http requests asks specific electrum server in socket and returns electrums response",
   "main": "index.js",
   "scripts": {
@@ -13,6 +13,8 @@
   "author": "Tadeas Kmenta",
   "license": "MIT",
   "dependencies": {
+    "axios": "^0.19.0",
+    "bitgo-utxo-lib": "git+https://github.com/zelcash/bitgo-utxo-lib.git",
     "electrum-client": "0.0.6",
     "qs": "6.7.0"
   },
