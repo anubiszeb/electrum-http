@@ -196,7 +196,7 @@ function onRequest(req, res) {
     const initHistoryPromise = initHistoryUrls.map(l => axios.get(l).then(pres => pres.data));
     Promise.all(initHistoryPromise, { timeout: 30000 })
       .then((response) => {
-        console.log(response);
+        // console.log(response);
         const myarray = response[0];
         const currentHeight = response[1].block_height;
         const currentTimestamp = response[1].timestamp;
@@ -254,11 +254,11 @@ function onRequest(req, res) {
                 };
                 if (!myvin.txid.includes("00000000000000000000000000000")) {
                   const inputUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transaction&param=${myvin.txid}`;
-                  console.log(myvin.txid);
+                  // console.log(myvin.txid);
                   axios.get(inputUrl, { timeout: 30000 })
                     .then((responseInput) => {
                       const inputRes = responseInput.data;
-                      console.log(inputRes)
+                      // console.log(inputRes)
                       const vintx = constructionType.Transaction.fromHex(inputRes);
                       const vinOutTx = vintx.outs[myvin.n];
                       myvin.valueSat = vinOutTx.value;
@@ -365,7 +365,7 @@ function onRequest(req, res) {
               const headerUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=header&param=${myTxHeight}`;
               headerUrls.push(headerUrl);
             }
-            const promiseArr = txUrls.map(l => axios.get(l).then(pres => pres.data));
+            const promiseArr = headerUrls.map(l => axios.get(l).then(pres => pres.data));
             Promise.all(promiseArr, { timeout: 30000 })
               .then((responseHeaders) => {
                 for (let k = 0; k < limit; k += 1) {
@@ -415,7 +415,7 @@ function onRequest(req, res) {
         const promiseArr = txUrls.map(l => axios.get(l).then(pres => pres.data));
         Promise.all(promiseArr)
           .then((pres) => {
-            console.log(pres);
+            // console.log(pres);
             for (let j = 0; j < pres.length; j += 1) {
               const rawtx = pres[j];
               const tx = bitgotx.Transaction.fromHex(rawtx);
