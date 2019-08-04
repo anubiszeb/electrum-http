@@ -191,22 +191,37 @@ function onRequest(req, res) {
     let address = param;
 
     const historyUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=history&param=${address}`;
-    axios.get(historyUrl, { timeout: 30000 })
+    const heightUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=height`;
+    const initHistoryUrls = [historyUrl, heightUrl];
+    const initHistoryPromise = initHistoryUrls.map(l => axios.get(l).then(pres => pres.data));
+    Promise.all(initHistoryPromise, { timeout: 30000 })
       .then((response) => {
-        const myarray = response.data;
+        console.log(response);
+        const myarray = response[0];
+        const currentHeight = response[1].block_height;
+        const currentTimestamp = response[1].timestamp;
         const ver = myarray.reverse();
         const limit = Math.min(ver.length, amountoftxs); // maximum of txs to fetch
         const lightTransactions = [];
-        async function terribleFn(i) {
-          const txHeight = ver[i].height;
-          // console.log(txHeight)
+        if (limit === 0) {
+          res.write(JSON.stringify(lightTransactions));
+          res.end();
+        }
+
+        const txUrls = [];
+        for (let i = 0; i < limit; i += 1) {
           const transactionUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transaction&param=${ver[i].tx_hash}`;
-          await axios.get(transactionUrl, { timeout: 30000 })
-            .then((responseB) => {
-              const rawtx = responseB.data;
+          txUrls.push(transactionUrl);
+        }
+        const txsPromise = txUrls.map(l => axios.get(l).then(pres => pres.data));
+        Promise.all(txsPromise, { timeout: 30000 })
+          .then((responseB) => {
+            for (let j = 0; j < limit; j += 1) {
+              const txHeight = ver[j].height;
+              const rawtx = responseB[j];
               const tx = constructionType.Transaction.fromHex(rawtx);
               const result = {
-                txid: ver[i].tx_hash,
+                txid: ver[j].tx_hash,
                 version: tx.version,
                 locktime: tx.locktime,
                 vin: [],
@@ -334,62 +349,44 @@ function onRequest(req, res) {
                 }
                 result.vout.push(myvout);
               });
-              const heightUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=height`;
-              axios.get(heightUrl, { timeout: 30000 })
-                .then((responseHeight) => {
-                  const curHeight = responseHeight.data;
-                  if (txHeight === 0) {
-                    result.confirmations = 0;
-                    result.time = curHeight.timestamp;
-                    lightTransactions.push(result);
-                    // console.log(lightTransactions)
-                    if (lightTransactions.length === limit) {
-                      // console.log(lightTransactions);
-                      res.write(JSON.stringify(lightTransactions));
-                      res.end();
-                    }
-                  } else {
-                    result.confirmations = curHeight.block_height - txHeight + 1;
-                    const headerUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=header&param=${txHeight}`;
-                    // console.log(header_url)
-                    axios.get(headerUrl, { timeout: 30000 })
-                      .then((responseHeader) => {
-                        const header = responseHeader.data; // json-rpc(promise)
-                        result.time = header.timestamp;
-                        lightTransactions.push(result);
-                        // console.log(lightTransactions)
-                        if (lightTransactions.length === limit) {
-                          // console.log(lightTransactions);
-                          res.write(JSON.stringify(lightTransactions));
-                          res.end();
-                        }
-                      })
-                      .catch((e) => {
-                        console.log(e);
-                        res.write(JSON.stringify(e));
-                        res.end();
-                      });
-                  }
-                })
-                .catch((e) => {
-                  console.log(e);
-                  res.write(JSON.stringify(e));
-                  res.end();
-                });
-            })
-            .catch((e) => {
-              console.log(e);
-              res.write(JSON.stringify(e));
-              res.end();
-            });
-        }
-        for (let i = 0; i < limit; i += 1) {
-          terribleFn(i);
-        }
-        if (limit === 0) {
-          res.write(JSON.stringify(lightTransactions));
-          res.end();
-        }
+
+              if (txHeight === 0) {
+                result.confirmations = 0;
+                result.time = currentTimestamp
+              } else {
+                result.confirmations = currentHeight - txHeight + 1;
+              }
+
+              lightTransactions.push(result);
+            }
+            const headerUrls = [];
+            for (let i = 0; i < limit; i += 1) {
+              const myTxHeight = lightTransactions[i].height === 0 ? currentHeight : lightTransactions[i].height;
+              const headerUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=header&param=${myTxHeight}`;
+              headerUrls.push(headerUrl);
+            }
+            const promiseArr = txUrls.map(l => axios.get(l).then(pres => pres.data));
+            Promise.all(promiseArr, { timeout: 30000 })
+              .then((responseHeaders) => {
+                for (let k = 0; k < limit; k += 1) {
+                  const header = responseHeaders[k]; // json-rpc(promise)
+                  lightTransactions[k].time = header.timestamp
+                }
+                console.log(lightTransactions);
+                res.write(JSON.stringify(lightTransactions));
+                res.end();
+              })
+              .catch((e) => {
+                console.log(e);
+                res.write(JSON.stringify(e));
+                res.end();
+              });
+          })
+          .catch((e) => {
+            console.log(e);
+            res.write(JSON.stringify(e));
+            res.end();
+          });
       })
       .catch((e) => {
         console.log(e);
