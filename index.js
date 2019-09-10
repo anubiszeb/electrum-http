@@ -61,6 +61,18 @@ function onRequest(req, res) {
     return;
   }
 
+  let network = bitgotx.networks.bitcoin;
+  if (param) {
+    try {
+      network = bitgotx.networks[coin];
+    } catch (e) {
+      console.log(e)
+      res.write("Error: Invalid coin network specified");
+      res.end();
+      return;
+    }
+  }
+
   // console.log(param);
   console.log(call);
   // console.log(server);
@@ -70,15 +82,15 @@ function onRequest(req, res) {
   var eclCall = "";
   switch (call) {
     case 'balance':
-      eclCall = 'blockchainAddress_getBalance'
+      eclCall = 'blockchainScripthash_getBalance'
       oneparam()
       break;
     case 'history':
-      eclCall = 'blockchainAddress_getHistory'
+      eclCall = 'blockchainScripthash_getHistory'
       oneparam(true)
       break;
     case 'entirehistory':
-      eclCall = 'blockchainAddress_getHistory'
+      eclCall = 'blockchainScripthash_getHistory'
       oneparam(false)
       break;
     case 'transaction':
@@ -86,7 +98,7 @@ function onRequest(req, res) {
       oneparam()
       break;
     case 'utxo':
-      eclCall = 'blockchainAddress_listunspent'
+      eclCall = 'blockchainScripthash_listunspent'
       oneparam()
       break;
     case 'broadcast':
@@ -123,19 +135,29 @@ function onRequest(req, res) {
           return;
         }); // connect(promise)
       try {
+        if (call === 'balance' || call === 'history' || call === 'entirehistory' || call === 'utxo') {
+          const paramBuffer = bitgotx.address.toOutputScript(
+            param,
+            network,
+          );
+          const scriptHash = bitgotx.crypto.sha256(paramBuffer).reverse().toString("hex");
+          console.log(scriptHash);
+          param = scriptHash;
+          console.log(bitgotx.address.fromOutputScript(paramBuffer, network))
+        }
         var ver = await ecl[eclCall](
           param
         ); // json-rpc(promise)
         // console.log(ver)
-        if (eclCall === "blockchainAddress_listunspent") {
+        if (eclCall === "blockchainScripthash_listunspent") {
           const slicedArray = ver.slice(0, 600);
           const verString = JSON.stringify(slicedArray)
           res.write(verString)
           res.end()
-        } else if (eclCall === "blockchainAddress_getHistory" && limitHistory) {
+        } else if (eclCall === "blockchainScripthash_getHistory" && limitHistory) {
           if (ver.length > 200) {
-            const lenght = ver.length
-            const slicedArray = ver.slice(lenght - 100, lenght);
+            const length = ver.length
+            const slicedArray = ver.slice(length - 100, length);
             const verString = JSON.stringify(slicedArray)
             res.write(verString)
             res.end()
@@ -186,7 +208,6 @@ function onRequest(req, res) {
   }
 
   function nicehistory(amountoftxs) {
-    const network = bitgotx.networks[coin];
     const constructionType = bitgotx;
     let address = param;
 
