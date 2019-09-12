@@ -23,10 +23,10 @@ http://localhost:3456/?server=proxy.genx.zelcore.io&call=history&param=CL19a3der
 parameters - > call, server, param, port, contype, coin (as defined in bitgo-utxo-lib, required for nice calls)
 
 possible calls
-balance = blockchainAddress_getBalance, param = address
-history = blockchainAddress_getHistory, param = address 
+balance = blockchainScripthash_getBalance, param = address
+history = blockchainScripthash_getHistory, param = address
 transaction = blockchainTransaction_get, param = txid
-utxo = blockchainAddress_listunspent, param = address
+utxo = blockchainScripthash_listunspent, param = address
 broadcast = blockchainTransaction_broadcast, param = rawtx
 height = blockchainHeaders_subscribe, no parameter
 header = blockchainBlock_getHeader, param = height
