@@ -74,7 +74,7 @@ function onRequest(req, res) {
   }
 
   // console.log(param);
-  console.log(call);
+  // console.log(call);
   // console.log(server);
   // console.log(conPort);
   // console.log(conType);
@@ -95,6 +95,14 @@ function onRequest(req, res) {
       break;
     case 'transaction':
       eclCall = 'blockchainTransaction_get'
+      oneparam()
+      break;
+    case 'transactionnonverbose':
+      eclCall = 'blockchainTransaction_get_nonverbose'
+      oneparam()
+      break;
+    case 'transactionverbose':
+      eclCall = 'blockchainTransaction_get_verbose'
       oneparam()
       break;
     case 'utxo':
@@ -120,7 +128,7 @@ function onRequest(req, res) {
       nicehistory(30000)
       break;
     case 'niceutxo':
-      niceutxo()
+      niceutxosimple()
       break;
   }
 
@@ -208,19 +216,16 @@ function onRequest(req, res) {
   }
 
   function nicehistory(amountoftxs) {
-    const constructionType = bitgotx;
     let address = param;
 
     const historyUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=history&param=${address}`;
-    const heightUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=height`;
-    const initHistoryUrls = [historyUrl, heightUrl];
+    const initHistoryUrls = [historyUrl];
     const initHistoryPromise = initHistoryUrls.map(l => axios.get(l).then(pres => pres.data));
     Promise.all(initHistoryPromise, { timeout: 30000 })
       .then((response) => {
         // console.log(response);
         const myarray = response[0];
-        const currentHeight = response[1].block_height;
-        const currentTimestamp = response[1].timestamp;
+        const currentTimestamp = Math.round(new Date() / 1000);
         const ver = myarray.reverse();
         const limit = Math.min(ver.length, amountoftxs); // maximum of txs to fetch
         const lightTransactions = [];
@@ -231,7 +236,7 @@ function onRequest(req, res) {
 
         const txUrls = [];
         for (let i = 0; i < limit; i += 1) {
-          const transactionUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transaction&param=${ver[i].tx_hash}`;
+          const transactionUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transactionverbose&param=${ver[i].tx_hash}`;
           txUrls.push(transactionUrl);
         }
         const txsPromise = txUrls.map(l => axios.get(l).then(pres => pres.data));
@@ -239,16 +244,16 @@ function onRequest(req, res) {
           .then((responseB) => {
             for (let j = 0; j < limit; j += 1) {
               const txHeight = ver[j].height;
-              const rawtx = responseB[j];
-              const tx = constructionType.Transaction.fromHex(rawtx);
+              const rawtx = responseB[j].hex;
+              const tx = bitgotx.Transaction.fromHex(rawtx);
               const result = {
-                txid: ver[j].tx_hash,
-                version: tx.version,
-                locktime: tx.locktime,
+                txid: responseB[j].txid,
+                version: responseB[j].version,
+                locktime: responseB[j].locktime,
                 vin: [],
                 vout: [],
-                time: 0,
-                confirmations: 0,
+                time: responseB[j].time || currentTimestamp,
+                confirmations: responseB[j].confirmations || 0,
                 valueInSat: 0,
                 valueOutSat: 0,
                 fees: 0,
@@ -262,12 +267,12 @@ function onRequest(req, res) {
                     txid: !input.hash.reverse
                       ? input.hash
                       : input.hash.reverse().toString("hex"),
-                    n: input.index, // input.index
-                    script: constructionType.script.toASM(input.script),
+                    n: input.index,
+                    script: bitgotx.script.toASM(input.script),
                     sequence: input.sequence,
                     scriptSig: {
                       hex: input.script.toString("hex"),
-                      asm: constructionType.script.toASM(input.script),
+                      asm: bitgotx.script.toASM(input.script),
                     },
                     addr: "",
                     value: 0,
@@ -275,24 +280,24 @@ function onRequest(req, res) {
                     satoshis: 0,
                   };
                   if (!myvin.txid.includes("00000000000000000000000000000")) {
-                    const inputUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transaction&param=${myvin.txid}`;
+                    const inputUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transactionnonverbose&param=${myvin.txid}`;
                     // console.log(myvin.txid);
                     axios.get(inputUrl, { timeout: 30000 })
                       .then((responseInput) => {
                         const inputRes = responseInput.data;
                         // console.log(inputRes)
-                        const vintx = constructionType.Transaction.fromHex(inputRes);
+                        const vintx = bitgotx.Transaction.fromHex(inputRes);
                         const vinOutTx = vintx.outs[myvin.n];
                         myvin.valueSat = vinOutTx.value;
                         myvin.satoshis = vinOutTx.value;
                         myvin.value = (1e-8 * vinOutTx.value);
                         result.valueInSat += vinOutTx.value;
                         result.fees += vinOutTx.value;
-                        const type = constructionType.script.classifyOutput(vinOutTx.script);
+                        const type = bitgotx.script.classifyOutput(vinOutTx.script);
                         let pubKeyBuffer;
                         switch (type) {
                           case "pubkeyhash":
-                            myvin.addr = constructionType.address.fromOutputScript(
+                            myvin.addr = bitgotx.address.fromOutputScript(
                               vinOutTx.script,
                               network,
                             );
@@ -302,13 +307,13 @@ function onRequest(req, res) {
                               myvin.scriptPubKey.asm.split(" ")[0],
                               "hex",
                             );
-                            myvin.addr = constructionType.ECPair.fromPublicKeyBuffer(
+                            myvin.addr = bitgotx.ECPair.fromPublicKeyBuffer(
                               pubKeyBuffer,
                               network,
                             ).getAddress();
                             break;
                           case "scripthash":
-                            myvin.addr = constructionType.address.fromOutputScript(
+                            myvin.addr = bitgotx.address.fromOutputScript(
                               vinOutTx.script,
                               network,
                             );
@@ -334,82 +339,17 @@ function onRequest(req, res) {
               });
 
               insFetching.then(() => {
-                tx.outs.forEach((out, n) => {
-                  const myvout = {
-                    satoshi: out.value,
-                    valueSat: out.value,
-                    value: (1e-8 * out.value),
-                    n,
-                    scriptPubKey: {
-                      asm: constructionType.script.toASM(out.script),
-                      hex: out.script.toString("hex"),
-                      type: constructionType.script.classifyOutput(out.script),
-                      addresses: [],
-                    },
-                  };
-                  result.valueOutSat += out.value;
-                  result.fees -= out.value;
-                  let pubKeyBuffer;
-                  switch (myvout.scriptPubKey.type) {
-                    case "pubkeyhash":
-                      myvout.scriptPubKey.addresses.push(
-                        constructionType.address.fromOutputScript(out.script, network),
-                      );
-                      break;
-                    case "pubkey":
-                      pubKeyBuffer = Buffer.from(
-                        myvout.scriptPubKey.asm.split(" ")[0],
-                        "hex",
-                      );
-                      myvout.scriptPubKey.addresses.push(
-                        constructionType.ECPair.fromPublicKeyBuffer(
-                          pubKeyBuffer,
-                          network,
-                        ).getAddress(),
-                      );
-                      break;
-                    case "scripthash":
-                      myvout.scriptPubKey.addresses.push(
-                        constructionType.address.fromOutputScript(out.script, network),
-                      );
-                      break;
-                    default:
-                      /* Do nothing */
-                      break;
-                  }
-                  result.vout.push(myvout);
-                });
-
-                if (txHeight === 0) {
-                  result.confirmations = 0;
-                  result.time = currentTimestamp
-                } else {
-                  result.confirmations = currentHeight - txHeight + 1;
-                }
+                responseB[j].vout.forEach((vout) => {
+                  vout.satoshi = vout.value * 1e8;
+                  vout.valueSat = vout.value * 1e8;
+                  result.valueOutSat += (vout.value * 1e8);
+                  result.fees -= (vout.value * 1e8);
+                  result.vout.push(vout)
+                })
                 lightTransactions.push(result);
                 if (lightTransactions.length === limit) {
-                  const headerUrls = [];
-                  for (let i = 0; i < limit; i += 1) {
-                    const myTxHeight = lightTransactions[i].height === 0 ? currentHeight : lightTransactions[i].height;
-                    const headerUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=header&param=${myTxHeight}`;
-                    headerUrls.push(headerUrl);
-                  }
-                  const promiseArr = headerUrls.map(l => axios.get(l).then(pres => pres.data));
-                  Promise.all(promiseArr, { timeout: 30000 })
-                    .then((responseHeaders) => {
-                      for (let k = 0; k < limit; k += 1) {
-                        const header = responseHeaders[k]; // json-rpc(promise)
-                        lightTransactions[k].time = header.timestamp
-                      }
-                      // console.log(lightTransactions);
-                      res.write(JSON.stringify(lightTransactions));
-                      res.end();
-                    })
-                    .catch((e) => {
-                      console.log(e);
-                      res.write(JSON.stringify(e));
-                      res.end();
-                    });
+                  res.write(JSON.stringify(lightTransactions));
+                  res.end();
                 }
               });
             }
@@ -440,7 +380,7 @@ function onRequest(req, res) {
           if (utxos[i].height !== 0) { // if === 0, continue
             // console.log("abc")
             // get scriptPubKey
-            const txUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transaction&param=${utxos[i].tx_hash}`;
+            const txUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transactionnonverbose&param=${utxos[i].tx_hash}`;
             txUrls.push(txUrl);
           }
         }
@@ -467,6 +407,39 @@ function onRequest(req, res) {
             res.write(JSON.stringify(e));
             res.end();
           });
+      })
+      .catch((e) => {
+        console.log(e);
+        res.write(JSON.stringify(e));
+        res.end();
+      });
+  }
+
+  function niceutxosimple() {
+    let address = param;
+    const scriptPubKey = bitgotx.address.toOutputScript(
+      address,
+      network,
+    ).toString("hex");
+    console.log(scriptPubKey);
+    const utxoUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=utxo&param=${address}`;
+    axios.get(utxoUrl, { timeout: 30000 })
+      .then((response) => {
+        const utxos = response.data;
+        const niceUtxos = [];
+        for (let i = 0; i < utxos.length; i += 1) {
+          if (utxos[i].height !== 0) { // if === 0, continue
+            niceUtxos.push({
+              txid: utxos[i].tx_hash,
+              vout: utxos[i].tx_pos,
+              scriptPubKey,
+              satoshis: utxos[i].value,
+              height: utxos[i].height,
+            });
+          }
+        }
+        res.write(JSON.stringify(niceUtxos));
+        res.end();
       })
       .catch((e) => {
         console.log(e);
