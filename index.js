@@ -327,7 +327,7 @@ function onRequest(req, res) {
                       })
                       .catch((e) => {
                         console.log(e)
-                        res.write(JSON.stringify(e))
+                        res.write("Error: " + e.message)
                         res.end()
                       });
                   } else if (index === array.length - 1) {
@@ -356,13 +356,13 @@ function onRequest(req, res) {
           })
           .catch((e) => {
             console.log(e);
-            res.write(JSON.stringify(e));
+            res.write("Error: " + e.message);
             res.end();
           });
       })
       .catch((e) => {
         console.log(e);
-        res.write(JSON.stringify(e));
+        res.write("Error: " + e.message);
         res.end();
       });
   }
@@ -404,13 +404,13 @@ function onRequest(req, res) {
           })
           .catch((e) => {
             console.log(e);
-            res.write(JSON.stringify(e));
+            res.write("Error: " + e.message)
             res.end();
           });
       })
       .catch((e) => {
         console.log(e);
-        res.write(JSON.stringify(e));
+        res.write("Error: " + e.message)
         res.end();
       });
   }
@@ -443,7 +443,7 @@ function onRequest(req, res) {
       })
       .catch((e) => {
         console.log(e);
-        res.write(JSON.stringify(e));
+        res.write("Error: " + e.message)
         res.end();
       });
   }
