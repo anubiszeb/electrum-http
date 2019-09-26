@@ -1,18 +1,18 @@
-var http = require('http');
 const ElectrumCli = require("electrum-client");
 const qs = require("qs");
+const Ddos = require("ddos");
 const bitgotx = require('bitgo-utxo-lib');
-const axios = require("axios");
+const ddos = new Ddos({ burst: 25, limit: 100 });
+const express = require("express");
+const app = express();
+app.use(ddos.express);
 
 let conTypeDefault = "tls";  // tcp or tls
 let conPortDefault = 50002;
 let coinDefault = 'bitcoin';
-const localhost = "http://127.0.0.1";
 const listeningPort = 3456;
 
-http.createServer(onRequest).listen(listeningPort);
-
-function onRequest(req, res) {
+app.use(function (req, res, next) {
 
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -61,32 +61,46 @@ function onRequest(req, res) {
     return;
   }
 
-  console.log(param);
-  console.log(call);
-  console.log(server);
-  console.log(conPort);
-  console.log(conType);
+  let network = bitgotx.networks.bitcoin;
+  if (param) {
+    try {
+      network = bitgotx.networks[coin];
+    } catch (e) {
+      console.log(e)
+      res.write("Error: Invalid coin network specified");
+      res.end();
+      return;
+    }
+  }
 
   var eclCall = "";
   switch (call) {
     case 'balance':
-      eclCall = 'blockchainAddress_getBalance'
+      eclCall = 'blockchainScripthash_getBalance'
       oneparam()
       break;
     case 'history':
-      eclCall = 'blockchainAddress_getHistory'
+      eclCall = 'blockchainScripthash_getHistory'
       oneparam(true)
       break;
     case 'entirehistory':
-      eclCall = 'blockchainAddress_getHistory'
+      eclCall = 'blockchainScripthash_getHistory'
       oneparam(false)
       break;
     case 'transaction':
       eclCall = 'blockchainTransaction_get'
       oneparam()
       break;
+    case 'transactionnonverbose':
+      eclCall = 'blockchainTransaction_get_nonverbose'
+      oneparam()
+      break;
+    case 'transactionverbose':
+      eclCall = 'blockchainTransaction_get_verbose'
+      oneparam()
+      break;
     case 'utxo':
-      eclCall = 'blockchainAddress_listunspent'
+      eclCall = 'blockchainScripthash_listunspent'
       oneparam()
       break;
     case 'broadcast':
@@ -123,37 +137,51 @@ function onRequest(req, res) {
           return;
         }); // connect(promise)
       try {
+        if (call === 'balance' || call === 'history' || call === 'entirehistory' || call === 'utxo') {
+          const paramBuffer = bitgotx.address.toOutputScript(
+            param,
+            network,
+          );
+          const scriptHash = bitgotx.crypto.sha256(paramBuffer).reverse().toString("hex");
+          console.log(scriptHash);
+          param = scriptHash;
+          console.log(bitgotx.address.fromOutputScript(paramBuffer, network))
+        }
         var ver = await ecl[eclCall](
           param
         ); // json-rpc(promise)
-        //console.log(ver)
-        if (eclCall === "blockchainAddress_listunspent") {
+        // console.log(ver)
+        if (eclCall === "blockchainScripthash_listunspent") {
+          ecl.close();
           const slicedArray = ver.slice(0, 600);
           const verString = JSON.stringify(slicedArray)
           res.write(verString)
           res.end()
-        } else if (eclCall === "blockchainAddress_getHistory" && limitHistory) {
+        } else if (eclCall === "blockchainScripthash_getHistory" && limitHistory) {
           if (ver.length > 200) {
-            const lenght = ver.length
-            const slicedArray = ver.slice(lenght - 100, lenght);
+            ecl.close();
+            const length = ver.length
+            const slicedArray = ver.slice(length - 100, length);
             const verString = JSON.stringify(slicedArray)
             res.write(verString)
             res.end()
           } else {
+            ecl.close();
             var verString = JSON.stringify(ver)
             res.write(verString)
             res.end()
           }
         } else {
+          ecl.close();
           var verString = JSON.stringify(ver)
           res.write(verString)
           res.end()
         }
       } catch (e) {
-        res.write(JSON.stringify(e))
+        ecl.close();
+        res.write("Error: " + e.message)
         res.end()
       }
-      await ecl.close(); // disconnect(promise)
     };
     main()
   }
@@ -171,66 +199,92 @@ function onRequest(req, res) {
       try {
         var ver = await ecl[eclCall](
         ); // json-rpc(promise)
-        //console.log(ver)
+        // console.log(ver)
+        ecl.close();
         var verString = JSON.stringify(ver)
         res.write(verString)
         res.end()
       } catch (e) {
+        ecl.close();
         console.log(e)
-        res.write(JSON.stringify(e))
+        res.write("Error: " + e.message)
         res.end()
       }
-      await ecl.close();
     };
     main()
   }
 
-  function nicehistory(amountoftxs) {
-    const network = bitgotx.networks[coin];
-    const constructionType = bitgotx;
+  async function nicehistory(amountoftxs) {
     let address = param;
+    console.log(address);
+    var ecl = new ElectrumCli(conPort, server, conType);
+    await ecl.connect()
+      .catch(function (error) {
+        console.log(error)
+        res.write(JSON.stringify(error))
+        res.end()
+        return;
+      }); // connect(promise)
+    try {
+      const paramBuffer = bitgotx.address.toOutputScript(
+        address,
+        network,
+      );
+      const scriptHash = bitgotx.crypto.sha256(paramBuffer).reverse().toString("hex");
 
-    const historyUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=history&param=${address}`;
-    axios.get(historyUrl, { timeout: 30000 })
-      .then((response) => {
-        const myarray = response.data;
-        const ver = myarray.reverse();
-        const limit = Math.min(ver.length, amountoftxs); // maximum of txs to fetch
-        const lightTransactions = [];
-        async function terribleFn(i) {
-          const txHeight = ver[i].height;
-          // console.log(txHeight)
-          const transactionUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transaction&param=${ver[i].tx_hash}`;
-          await axios.get(transactionUrl, { timeout: 30000 })
-            .then((responseB) => {
-              const rawtx = responseB.data;
-              const tx = constructionType.Transaction.fromHex(rawtx);
-              const result = {
-                txid: ver[i].tx_hash,
-                version: tx.version,
-                locktime: tx.locktime,
-                vin: [],
-                vout: [],
-                time: 0,
-                confirmations: 0,
-                valueInSat: 0,
-                valueOutSat: 0,
-                fees: 0,
-                height: txHeight,
-              };
-              // console.log(tx)
-              // console.log(result);
-              tx.ins.forEach((input) => {
+      var response = await ecl["blockchainScripthash_getHistory"](
+        scriptHash
+      );
+      // console.log(response);
+      const myarray = response;
+      const currentTimestamp = Math.round(new Date() / 1000);
+      const ver = myarray.reverse();
+      const limit = Math.min(ver.length, amountoftxs); // maximum of txs to fetch
+      const lightTransactions = [];
+      if (limit === 0) {
+        ecl.close();
+        res.write(JSON.stringify(lightTransactions));
+        res.end();
+      }
+
+      const txUrls = [];
+      for (let i = 0; i < limit; i += 1) {
+        txUrls.push(ver[i].tx_hash);
+      }
+      const txsPromise = txUrls.map(l => ecl["blockchainTransaction_get_verbose"](l));
+      Promise.all(txsPromise, { timeout: 30000 })
+        .then((responseB) => {
+          for (let j = 0; j < limit; j += 1) {
+            const txHeight = ver[j].height;
+            const rawtx = responseB[j].hex;
+            const tx = bitgotx.Transaction.fromHex(rawtx);
+            const result = {
+              txid: responseB[j].txid,
+              version: responseB[j].version,
+              locktime: responseB[j].locktime,
+              vin: [],
+              vout: [],
+              time: responseB[j].time || currentTimestamp,
+              confirmations: responseB[j].confirmations || 0,
+              valueInSat: 0,
+              valueOutSat: 0,
+              fees: 0,
+              height: txHeight,
+            };
+            // console.log(tx)
+            // console.log(result);
+            const insFetching = new Promise((resolve, reject) => {
+              tx.ins.forEach((input, index, array) => {
                 const myvin = {
                   txid: !input.hash.reverse
                     ? input.hash
                     : input.hash.reverse().toString("hex"),
-                  n: input.index, // input.index
-                  script: constructionType.script.toASM(input.script),
+                  n: input.index,
+                  script: bitgotx.script.toASM(input.script),
                   sequence: input.sequence,
                   scriptSig: {
                     hex: input.script.toString("hex"),
-                    asm: constructionType.script.toASM(input.script),
+                    asm: bitgotx.script.toASM(input.script),
                   },
                   addr: "",
                   value: 0,
@@ -238,24 +292,22 @@ function onRequest(req, res) {
                   satoshis: 0,
                 };
                 if (!myvin.txid.includes("00000000000000000000000000000")) {
-                  const inputUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transaction&param=${myvin.txid}`;
-                  console.log(myvin.txid);
-                  axios.get(inputUrl, { timeout: 30000 })
+                  ecl["blockchainTransaction_get_nonverbose"](myvin.txid)
                     .then((responseInput) => {
-                      const inputRes = responseInput.data;
-                      console.log(inputRes)
-                      const vintx = constructionType.Transaction.fromHex(inputRes);
+                      const inputRes = responseInput;
+                      // console.log(inputRes)
+                      const vintx = bitgotx.Transaction.fromHex(inputRes);
                       const vinOutTx = vintx.outs[myvin.n];
                       myvin.valueSat = vinOutTx.value;
                       myvin.satoshis = vinOutTx.value;
                       myvin.value = (1e-8 * vinOutTx.value);
                       result.valueInSat += vinOutTx.value;
                       result.fees += vinOutTx.value;
-                      const type = constructionType.script.classifyOutput(vinOutTx.script);
+                      const type = bitgotx.script.classifyOutput(vinOutTx.script);
                       let pubKeyBuffer;
                       switch (type) {
                         case "pubkeyhash":
-                          myvin.addr = constructionType.address.fromOutputScript(
+                          myvin.addr = bitgotx.address.fromOutputScript(
                             vinOutTx.script,
                             network,
                           );
@@ -265,13 +317,13 @@ function onRequest(req, res) {
                             myvin.scriptPubKey.asm.split(" ")[0],
                             "hex",
                           );
-                          myvin.addr = constructionType.ECPair.fromPublicKeyBuffer(
+                          myvin.addr = bitgotx.ECPair.fromPublicKeyBuffer(
                             pubKeyBuffer,
                             network,
                           ).getAddress();
                           break;
                         case "scripthash":
-                          myvin.addr = constructionType.address.fromOutputScript(
+                          myvin.addr = bitgotx.address.fromOutputScript(
                             vinOutTx.script,
                             network,
                           );
@@ -281,171 +333,103 @@ function onRequest(req, res) {
                           break;
                       }
                       result.vin.push(myvin);
+                      if (index === array.length - 1) resolve();
                     })
                     .catch((e) => {
                       console.log(e)
-                      res.write(JSON.stringify(e))
+                      ecl.close();
+                      res.write("Error: " + e.message)
                       res.end()
                     });
+                } else if (index === array.length - 1) {
+                  setTimeout(() => {
+                    resolve();
+                  }, 888)
                 }
               });
-              tx.outs.forEach((out, n) => {
-                const myvout = {
-                  satoshi: out.value,
-                  valueSat: out.value,
-                  value: (1e-8 * out.value),
-                  n,
-                  scriptPubKey: {
-                    asm: constructionType.script.toASM(out.script),
-                    hex: out.script.toString("hex"),
-                    type: constructionType.script.classifyOutput(out.script),
-                    addresses: [],
-                  },
-                };
-                result.valueOutSat += out.value;
-                result.fees -= out.value;
-                let pubKeyBuffer;
-                switch (myvout.scriptPubKey.type) {
-                  case "pubkeyhash":
-                    myvout.scriptPubKey.addresses.push(
-                      constructionType.address.fromOutputScript(out.script, network),
-                    );
-                    break;
-                  case "pubkey":
-                    pubKeyBuffer = Buffer.from(
-                      myvout.scriptPubKey.asm.split(" ")[0],
-                      "hex",
-                    );
-                    myvout.scriptPubKey.addresses.push(
-                      constructionType.ECPair.fromPublicKeyBuffer(
-                        pubKeyBuffer,
-                        network,
-                      ).getAddress(),
-                    );
-                    break;
-                  case "scripthash":
-                    myvout.scriptPubKey.addresses.push(
-                      constructionType.address.fromOutputScript(out.script, network),
-                    );
-                    break;
-                  default:
-                    /* Do nothing */
-                    break;
-                }
-                result.vout.push(myvout);
-              });
-              const heightUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=height`;
-              axios.get(heightUrl, { timeout: 30000 })
-                .then((responseHeight) => {
-                  const curHeight = responseHeight.data;
-                  if (txHeight === 0) {
-                    result.confirmations = 0;
-                    result.time = curHeight.timestamp;
-                    lightTransactions.push(result);
-                    // console.log(lightTransactions)
-                    if (lightTransactions.length === limit) {
-                      // console.log(lightTransactions);
-                      res.write(JSON.stringify(lightTransactions));
-                      res.end();
-                    }
-                  } else {
-                    result.confirmations = curHeight.block_height - txHeight + 1;
-                    const headerUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=header&param=${txHeight}`;
-                    // console.log(header_url)
-                    axios.get(headerUrl, { timeout: 30000 })
-                      .then((responseHeader) => {
-                        const header = responseHeader.data; // json-rpc(promise)
-                        result.time = header.timestamp;
-                        lightTransactions.push(result);
-                        // console.log(lightTransactions)
-                        if (lightTransactions.length === limit) {
-                          // console.log(lightTransactions);
-                          res.write(JSON.stringify(lightTransactions));
-                          res.end();
-                        }
-                      })
-                      .catch((e) => {
-                        console.log(e);
-                        res.write(JSON.stringify(e));
-                        res.end();
-                      });
-                  }
-                })
-                .catch((e) => {
-                  console.log(e);
-                  res.write(JSON.stringify(e));
-                  res.end();
-                });
-            })
-            .catch((e) => {
-              console.log(e);
-              res.write(JSON.stringify(e));
-              res.end();
             });
-        }
-        for (let i = 0; i < limit; i += 1) {
-          terribleFn(i);
-        }
-        if (limit === 0) {
-          res.write(JSON.stringify(lightTransactions));
-          res.end();
-        }
-      })
-      .catch((e) => {
-        console.log(e);
-        res.write(JSON.stringify(e));
-        res.end();
-      });
-  }
 
-  function niceutxo() {
-    let address = param;
-
-    const utxoUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=utxo&param=${address}`;
-    axios.get(utxoUrl, { timeout: 30000 })
-      .then((response) => {
-        const utxos = response.data;
-        const txUrls = [];
-        const niceUtxos = [];
-        for (let i = 0; i < utxos.length; i += 1) {
-          if (utxos[i].height !== 0) { // if === 0, continue
-            // console.log("abc")
-            // get scriptPubKey
-            const txUrl = `${localhost}:${listeningPort}/?server=${server}&port=${conPort}&contype=${conType}&coin=${coin}&call=transaction&param=${utxos[i].tx_hash}`;
-            txUrls.push(txUrl);
+            insFetching.then(() => {
+              responseB[j].vout.forEach((vout) => {
+                vout.satoshi = vout.value * 1e8;
+                vout.valueSat = vout.value * 1e8;
+                result.valueOutSat += (vout.value * 1e8);
+                result.fees -= (vout.value * 1e8);
+                result.vout.push(vout)
+              })
+              lightTransactions.push(result);
+              if (lightTransactions.length === limit) {
+                ecl.close();
+                res.write(JSON.stringify(lightTransactions));
+                res.end();
+              }
+            });
           }
-        }
-        const promiseArr = txUrls.map(l => axios.get(l).then(pres => pres.data));
-        Promise.all(promiseArr)
-          .then((pres) => {
-            console.log(pres);
-            for (let j = 0; j < pres.length; j += 1) {
-              const rawtx = pres[j];
-              const tx = bitgotx.Transaction.fromHex(rawtx);
-              niceUtxos.push({
-                txid: utxos[j].tx_hash,
-                vout: utxos[j].tx_pos,
-                scriptPubKey: tx.outs[utxos[j].tx_pos].script.toString("hex"),
-                satoshis: utxos[j].value,
-                height: utxos[j].height,
-              });
-            }
-            res.write(JSON.stringify(niceUtxos));
-            res.end();
-          })
-          .catch((e) => {
-            console.log(e);
-            res.write(JSON.stringify(e));
-            res.end();
-          });
-      })
-      .catch((e) => {
-        console.log(e);
-        res.write(JSON.stringify(e));
-        res.end();
-      });
+        })
+        .catch((e) => {
+          ecl.close();
+          console.log(e);
+          res.write("Error: " + e.message);
+          res.end();
+        });
+    } catch (e) {
+      ecl.close();
+      res.write("Error: " + e.message)
+      res.end()
+    }
   }
-}
+
+  async function niceutxo() {
+    let address = param;
+    console.log(address);
+    var ecl = new ElectrumCli(conPort, server, conType);
+    await ecl.connect()
+      .catch(function (error) {
+        console.log(error)
+        res.write(JSON.stringify(error))
+        res.end()
+        return;
+      }); // connect(promise)
+    try {
+      const paramBuffer = bitgotx.address.toOutputScript(
+        param,
+        network,
+      );
+      const scriptHash = bitgotx.crypto.sha256(paramBuffer).reverse().toString("hex");
+      const scriptPubKey = bitgotx.address.toOutputScript(
+        address,
+        network,
+      ).toString("hex");
+      var ver = await ecl["blockchainScripthash_listunspent"](
+        scriptHash
+      );
+      ecl.close();
+      const utxos = ver.slice(0, 600);
+      const niceUtxos = [];
+      for (let i = 0; i < utxos.length; i += 1) {
+        if (utxos[i].height !== 0) { // if === 0, continue
+          niceUtxos.push({
+            txid: utxos[i].tx_hash,
+            vout: utxos[i].tx_pos,
+            scriptPubKey,
+            satoshis: utxos[i].value,
+            height: utxos[i].height,
+          });
+        }
+      }
+      res.write(JSON.stringify(niceUtxos));
+      res.end();
+    } catch (e) {
+      ecl.close();
+      res.write("Error: " + e.message)
+      res.end()
+    }
+  }
+});
+
+app.listen(listeningPort, function () {
+  console.log('App listening on ' + listeningPort);
+});
 
 process.on('uncaughtException', function (exception) {
   console.log(exception)
