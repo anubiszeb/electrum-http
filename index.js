@@ -152,32 +152,36 @@ app.use(function (req, res, next) {
         ); // json-rpc(promise)
         // console.log(ver)
         if (eclCall === "blockchainScripthash_listunspent") {
+          ecl.close();
           const slicedArray = ver.slice(0, 600);
           const verString = JSON.stringify(slicedArray)
           res.write(verString)
           res.end()
         } else if (eclCall === "blockchainScripthash_getHistory" && limitHistory) {
           if (ver.length > 200) {
+            ecl.close();
             const length = ver.length
             const slicedArray = ver.slice(length - 100, length);
             const verString = JSON.stringify(slicedArray)
             res.write(verString)
             res.end()
           } else {
+            ecl.close();
             var verString = JSON.stringify(ver)
             res.write(verString)
             res.end()
           }
         } else {
+          ecl.close();
           var verString = JSON.stringify(ver)
           res.write(verString)
           res.end()
         }
       } catch (e) {
+        ecl.close();
         res.write("Error: " + e.message)
         res.end()
       }
-      await ecl.close(); // disconnect(promise)
     };
     main()
   }
@@ -196,15 +200,16 @@ app.use(function (req, res, next) {
         var ver = await ecl[eclCall](
         ); // json-rpc(promise)
         // console.log(ver)
+        ecl.close();
         var verString = JSON.stringify(ver)
         res.write(verString)
         res.end()
       } catch (e) {
+        ecl.close();
         console.log(e)
         res.write("Error: " + e.message)
         res.end()
       }
-      await ecl.close();
     };
     main()
   }
@@ -237,6 +242,7 @@ app.use(function (req, res, next) {
       const limit = Math.min(ver.length, amountoftxs); // maximum of txs to fetch
       const lightTransactions = [];
       if (limit === 0) {
+        ecl.close();
         res.write(JSON.stringify(lightTransactions));
         res.end();
       }
@@ -331,6 +337,7 @@ app.use(function (req, res, next) {
                     })
                     .catch((e) => {
                       console.log(e)
+                      ecl.close();
                       res.write("Error: " + e.message)
                       res.end()
                     });
@@ -352,6 +359,7 @@ app.use(function (req, res, next) {
               })
               lightTransactions.push(result);
               if (lightTransactions.length === limit) {
+                ecl.close();
                 res.write(JSON.stringify(lightTransactions));
                 res.end();
               }
@@ -359,6 +367,7 @@ app.use(function (req, res, next) {
           }
         })
         .catch((e) => {
+          ecl.close();
           console.log(e);
           res.write("Error: " + e.message);
           res.end();
