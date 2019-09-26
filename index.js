@@ -2,7 +2,7 @@ const ElectrumCli = require("electrum-client");
 const qs = require("qs");
 const Ddos = require("ddos");
 const bitgotx = require('bitgo-utxo-lib');
-const ddos = new Ddos({ burst: 24, limit: 48 });
+const ddos = new Ddos({ burst: 25, limit: 100 });
 const express = require("express");
 const app = express();
 app.use(ddos.express);
@@ -10,7 +10,6 @@ app.use(ddos.express);
 let conTypeDefault = "tls";  // tcp or tls
 let conPortDefault = 50002;
 let coinDefault = 'bitcoin';
-const localhost = "http://127.0.0.1";
 const listeningPort = 3456;
 
 app.use(function (req, res, next) {
